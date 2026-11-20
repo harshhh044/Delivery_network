@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delivery Network MST Visualizer</title>
+<style>
+:root{--bg:#e9eff3;--panel:#fff;--ink:#14304a;--muted:#5d7387;--line:#b9c6d1;--pick:#0a8f6a;--look:#e69f00;--skip:#d9534f;--node:#14304a}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1a26;--panel:#16283a;--ink:#e6eef5;--muted:#93a8ba;--line:#3b5167;--pick:#2fd1a0;--look:#f2b632;--skip:#ff7a74;--node:#e6eef5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}
+@media (max-width:820px){main{grid-template-columns:1fr}}
+h1{grid-column:1/-1;margin:0;font:600 24px Georgia,serif}
+h1 small{display:block;font:14px "Segoe UI",sans-serif;color:var(--muted);margin-top:2px}
+.map,.side{background:var(--panel);border-radius:10px;padding:12px}
+svg{width:100%;height:auto;display:block}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+button,select{font:inherit;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+button.main{background:var(--pick);border-color:var(--pick);color:#fff}
+button:focus-visible,select:focus-visible{outline:2px solid var(--look);outline-offset:2px}
+.stat{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}
+.stat b{font-variant-numeric:tabular-nums}
+#log{margin:10px 0 0;padding:0;list-style:none;max-height:300px;overflow:auto;font-size:13px}
+#log li{padding:4px 0;border-bottom:1px dotted var(--line)}
+.ok{color:var(--pick)}.no{color:var(--skip)}
+.key{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:8px}
+.key i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.edge{stroke:var(--line);stroke-width:.5}
+.edge.pick{stroke:var(--pick);stroke-width:1.4}
+.edge.look{stroke:var(--look);stroke-width:1.2}
+.edge.skip{stroke:var(--skip);stroke-width:1;stroke-dasharray:2 1.5}
+.w{font-size:2.8px;fill:var(--muted);paint-order:stroke;stroke:var(--panel);stroke-width:.9px}
+.w.pick{fill:var(--pick);font-weight:700}
+.node{fill:var(--node);stroke:var(--panel);stroke-width:.6}
+.node.in{fill:var(--pick)}
+.lbl{font-size:3px;fill:var(--ink);text-anchor:middle;paint-order:stroke;stroke:var(--panel);stroke-width:.8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Delivery network: minimum spanning tree<small>Watch Prim's and Kruskal's algorithms pick the cheapest set of routes that connects every location.</small></h1>
+<section class="map">
+  <div class="controls">
+    <select id="algo" aria-label="Algorithm"><option value="prim">Prim's algorithm</option><option value="kruskal">Kruskal's algorithm</option></select>
+    <select id="net" aria-label="Network"><option value="sample">Sample network (9 locations)</option><option value="random">New random network</option></select>
+    <button id="step" class="main">Next step</button>
+    <button id="play">Play</button>
+    <button id="reset">Reset</button>
+  </div>
+  <svg id="svg" viewBox="-6 -4 112 112" role="img" aria-label="Delivery network graph"></svg>
+  <div class="key"><span><i style="background:var(--pick)"></i>selected route</span><span><i style="background:var(--look)"></i>being considered</span><span><i style="background:var(--skip)"></i>rejected (would form a loop)</span><span><i style="background:var(--line)"></i>not yet looked at</span></div>
+</section>
+<aside class="side">
+  <div class="stat"><span>Locations</span><b id="sN"></b></div>
+  <div class="stat"><span>Possible routes</span><b id="sE"></b></div>
+  <div class="stat"><span>Routes selected</span><b id="sP"></b></div>
+  <div class="stat"><span>Total cost so far</span><b id="sC">0</b></div>
+  <p id="msg" style="color:var(--muted);margin:10px 0 0"></p>
+  <ul id="log"></ul>
+</aside>
+</main>
+<script>
+const SAMPLE={nodes:[["Warehouse",50,50],["Hub-North",50,90],["Hub-South",50,10],["Mall",20,70],["Airport",90,80],["University",85,40],["Hospital",15,35],["Market",30,15],["Station",75,15]],
+edges:[[0,1,40],[0,2,40],[0,3,36],[0,5,36],[0,6,38],[1,3,36],[1,4,41],[3,6,35],[4,5,41],[5,8,26],[8,2,25],[2,7,20],[7,6,25],[0,4,57],[2,5,50],[3,4,70]]};
+let G=SAMPLE, steps=[], idx=0, timer=null;
+const $=id=>document.getElementById(id), NS="http://www.w3.org/2000/svg";
+
+function randomNet(){
+  const n=12,pts=[];
+  for(let i=0;i<n;i++)pts.push(["L"+i,8+Math.random()*84,8+Math.random()*84]);
+  const d=(a,b)=>Math.hypot(pts[a][1]-pts[b][1],pts[a][2]-pts[b][2]),set=new Set(),edges=[];
+  const add=(a,b)=>{const k=Math.min(a,b)+"-"+Math.max(a,b);if(a!==b&&!set.has(k)){set.add(k);edges.push([a,b,Math.round(d(a,b))])}};
+  for(let i=0;i<n;i++){[...Array(n).keys()].filter(j=>j!==i).sort((a,b)=>d(i,a)-d(i,b)).slice(0,3).forEach(j=>add(i,j))}
+  for(;;){ // link separate parts until the network is connected
+    const p=[...Array(n).keys()];const f=x=>p[x]===x?x:(p[x]=f(p[x]));
+    edges.forEach(e=>p[f(e[0])]=f(e[1]));
+    const root=f(0),out=[...Array(n).keys()].filter(i=>f(i)!==root);
+    if(!out.length)break;
+    let best=null;for(const a of out)for(let b=0;b<n;b++)if(f(b)===root&&(!best||d(a,b)<best[0]))best=[d(a,b),a,b];
+    add(best[1],best[2]);
+  }
+  return {nodes:pts,edges};
+}
+
+function build(){
+  steps=[];idx=0;
+  const n=G.nodes.length,E=G.edges;
+  if($("algo").value==="kruskal"){
+    const p=[...Array(n).keys()];const f=x=>p[x]===x?x:(p[x]=f(p[x]));
+    let got=0;
+    [...E.keys()].sort((a,b)=>E[a][2]-E[b][2]).forEach(i=>{
+      if(got===n-1)return;
+      const [u,v]=E[i],ru=f(u),rv=f(v);
+      if(ru!==rv){p[ru]=rv;got++;steps.push({e:i,ok:true,t:`Cheapest remaining route ${G.nodes[u][0]} - ${G.nodes[v][0]} (${E[i][2]}) joins two separate groups: selected.`})}
+      else steps.push({e:i,ok:false,t:`Route ${G.nodes[u][0]} - ${G.nodes[v][0]} (${E[i][2]}) would form a loop: rejected.`});
+    });
+  }else{
+    const seen=new Set([0]);
+    while(seen.size<n){
+      let best=-1;
+      E.forEach((e,i)=>{if(seen.has(e[0])!==seen.has(e[1])&&(best<0||e[2]<E[best][2]))best=i});
+      const [u,v,w]=E[best],nw=seen.has(u)?v:u,old=seen.has(u)?u:v;
+      seen.add(nw);
+      steps.push({e:best,ok:true,t:`Cheapest route leaving the connected area: ${G.nodes[old][0]} - ${G.nodes[nw][0]} (${w}). ${G.nodes[nw][0]} is now connected.`});
+    }
+  }
+  render();
+}
+
+function render(){
+  const svg=$("svg");svg.innerHTML="";
+  let cost=0,picked=0;const status={},inTree=new Set();
+  if($("algo").value==="prim")inTree.add(0);
+  for(let s=0;s<idx;s++){const st=steps[s];status[st.e]=st.ok?"pick":"skip";if(st.ok){cost+=G.edges[st.e][2];picked++;G.edges[st.e].slice(0,2).forEach(x=>inTree.add(x))}}
+  const cur=idx>0?steps[idx-1].e:-1;
+  const mk=(t,a)=>{const el=document.createElementNS(NS,t);for(const k in a)el.setAttribute(k,a[k]);svg.appendChild(el);return el};
+  G.edges.forEach(([u,v,w],i)=>{
+    const c=status[i]||"";const A=G.nodes[u],B=G.nodes[v];
+    mk("line",{x1:A[1],y1:100-A[2],x2:B[1],y2:100-B[2],class:"edge "+(i===cur&&c!=="skip"?"look pick":c)});
+  });
+  G.edges.forEach(([u,v,w],i)=>{
+    const A=G.nodes[u],B=G.nodes[v],t=mk("text",{x:(A[1]+B[1])/2,y:100-(A[2]+B[2])/2+1,class:"w "+(status[i]==="pick"?"pick":""),"text-anchor":"middle"});t.textContent=w;
+  });
+  if(cur>=0){const [u,v]=G.edges[cur],A=G.nodes[u],B=G.nodes[v];mk("line",{x1:A[1],y1:100-A[2],x2:B[1],y2:100-B[2],class:"edge "+(steps[idx-1].ok?"pick":"skip"),"stroke-width":steps[idx-1].ok?2:1.4})}
+  G.nodes.forEach((p,i)=>{mk("circle",{cx:p[1],cy:100-p[2],r:2.2,class:"node"+(inTree.has(i)?" in":"")});
+    const t=mk("text",{x:p[1],y:100-p[2]+6,class:"lbl"});t.textContent=p[0]});
+  $("sN").textContent=G.nodes.length;$("sE").textContent=G.edges.length;$("sP").textContent=picked+" of "+(G.nodes.length-1);$("sC").textContent=cost;
+  const done=idx>=steps.length;
+  $("msg").textContent=idx===0?"Press Next step to begin.":(done&&steps.length?`Done. All ${G.nodes.length} locations are connected for a total cost of ${cost}.`:steps[idx-1].t);
+  const log=$("log");log.innerHTML="";
+  for(let s=idx-1;s>=0;s--){const li=document.createElement("li");li.className=steps[s].ok?"ok":"no";li.textContent=(s+1)+". "+steps[s].t;log.appendChild(li)}
+  $("step").disabled=done;if(done)stop();
+}
+
+function next(){if(idx<steps.length){idx++;render()}}
+function stop(){clearInterval(timer);timer=null;$("play").textContent="Play"}
+function play(){if(timer)return stop();if(idx>=steps.length){idx=0}$("play").textContent="Pause";timer=setInterval(next,900);next()}
+function load(){stop();G=$("net").value==="random"?randomNet():SAMPLE;build()}
+$("step").onclick=next;$("play").onclick=play;$("reset").onclick=()=>{stop();build()};
+$("algo").onchange=()=>{stop();build()};$("net").onchange=load;
+build();
+</script>
+</body>
+</html>

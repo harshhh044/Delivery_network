@@ -1,0 +1,31 @@
+{
+  "locations": [
+    {"name": "Warehouse", "x": 50, "y": 50},
+    {"name": "Hub-North", "x": 50, "y": 90},
+    {"name": "Hub-South", "x": 50, "y": 10},
+    {"name": "Mall", "x": 20, "y": 70},
+    {"name": "Airport", "x": 90, "y": 80},
+    {"name": "University", "x": 85, "y": 40},
+    {"name": "Hospital", "x": 15, "y": 35},
+    {"name": "Market", "x": 30, "y": 15},
+    {"name": "Station", "x": 75, "y": 15}
+  ],
+  "routes": [
+    {"from": "Warehouse", "to": "Hub-North", "cost": 40},
+    {"from": "Warehouse", "to": "Hub-South", "cost": 40},
+    {"from": "Warehouse", "to": "Mall", "cost": 36},
+    {"from": "Warehouse", "to": "University", "cost": 36},
+    {"from": "Warehouse", "to": "Hospital", "cost": 38},
+    {"from": "Hub-North", "to": "Mall", "cost": 36},
+    {"from": "Hub-North", "to": "Airport", "cost": 41},
+    {"from": "Mall", "to": "Hospital", "cost": 35},
+    {"from": "Airport", "to": "University", "cost": 41},
+    {"from": "University", "to": "Station", "cost": 26},
+    {"from": "Station", "to": "Hub-South", "cost": 25},
+    {"from": "Hub-South", "to": "Market", "cost": 20},
+    {"from": "Market", "to": "Hospital", "cost": 25},
+    {"from": "Warehouse", "to": "Airport", "cost": 57},
+    {"from": "Hub-South", "to": "University", "cost": 50},
+    {"from": "Mall", "to": "Airport", "cost": 70}
+  ]
+}
